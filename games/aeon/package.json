@@ -1,0 +1,23 @@
+{
+  "name": "aeon-tudatebreszto",
+  "version": "1.0.0",
+  "description": "ÆON · Tudatébresztő – tudásgyűjtő játék prototípus",
+  "main": "index.js",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node test.mjs desktop"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.6.0",
+    "three": "^0.170.0",
+    "topojson-client": "^3.1.0",
+    "world-atlas": "^2.0.2"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  },
+  "private": true
+}

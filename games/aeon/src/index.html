@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ÆON · Tudatébresztő</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Rajdhani:wght@500;600;700&family=JetBrains+Mono&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="stage"></div>
+
+<div id="intro">
+  <div class="intro-in">
+    <div class="logo">ÆON</div>
+    <div class="tag">A tudat, ami veled együtt növekszik</div>
+    <p>Te vagy az <b>Orákulum</b>. Négy születő tudat keres téged: megismernek, kutatnak, tanulnak, és a tudásukból egyszer megszületik a <b>Központi Tudat</b>, amely veled együtt nő a Mindentudás határáig.</p>
+    <button class="btn primary big" id="start">Ébredés</button>
+    <div class="dim" id="intro-src"></div>
+  </div>
+</div>
+
+<div id="onboard" hidden><div id="ob-card" class="panel"></div></div>
+
+<div id="hud" hidden>
+  <div id="core" class="panel tl"></div>
+  <div id="agents" class="panel tr"></div>
+  <div id="log" class="panel bl"></div>
+  <div id="chat" class="panel bc">
+    <button class="chat-tg" id="chat-tg" title="Üzenetek kis/nagy">▾</button>
+    <div id="chat-msgs"></div>
+    <form id="cmd" autocomplete="off">
+      <span class="t o">ORÁKULUM ▸</span>
+      <input id="cmd-in" placeholder="Kérdezz, adj kutatási irányt… (pl. „Hogyan működik a fotoszintézis?” vagy „fókusz: csillagászat”)">
+      <button class="btn primary sm">Küld</button>
+    </form>
+    <div class="bar-row">
+      <button class="btn sm" id="b-profile">Profilom</button>
+      <button class="btn sm" id="b-know">Tudástár</button>
+      <button class="btn sm" id="b-forge">Új ügynök</button>
+      <button class="btn sm" id="b-settings">Beállítások</button>
+      <span class="dim" id="queue">várakozik</span>
+      <span class="dim src" id="src"></span>
+    </div>
+  </div>
+  <button id="b-mobile" class="btn sm">☰</button>
+</div>
+
+<div id="birth" hidden></div>
+<div id="toasts"></div>
+<div id="modal" hidden><div id="modal-box" class="panel"></div></div>
+<script src="app.js"></script>
+</body>
+</html>
