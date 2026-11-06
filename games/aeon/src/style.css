@@ -114,3 +114,9 @@ label { display: block; font: 600 14px Rajdhani; color: rgba(200, 230, 255, .8);
 
 #chat.min #chat-msgs { display: none; }
 .chat-tg { position: absolute; right: 10px; top: 4px; background: none; border: none; color: #9fdcff; cursor: pointer; font-size: 14px; }
+
+.skill { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; margin: 6px 0; font-size: 15px; }
+.pips { display: flex; gap: 3px; } .pips i { width: 10px; height: 10px; border: 1px solid rgba(255,255,255,.25); } .pips i.on { background: var(--c); box-shadow: 0 0 6px var(--c); border-color: var(--c); }
+.pt { color: #ffcf3d; font-size: 11px; text-shadow: 0 0 8px #ffcf3d; }
+#kmap { width: 100%; height: auto; display: block; border: 1px solid rgba(0,229,255,.25); cursor: crosshair; }
+#modal-box:has(#kmap) { width: min(980px, 96vw); }

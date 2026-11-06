@@ -30,7 +30,14 @@ export class Game {
     this.idleTimer = 0;
   }
   // ---------- persistence ----------
-  load() { try { const raw = localStorage.getItem(SAVE_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; } }
+  load() {
+    try {
+      const d = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
+      // prototype saves from before skill points: give agents the skill fields
+      d?.agents?.forEach((a) => { a.skills ||= { speed: 0, depth: 0, accuracy: 0 }; a.points ??= Math.max(0, a.level - 1); });
+      return d;
+    } catch { return null; }
+  }
   save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(this.s)); } catch { /* storage may be unavailable (sandboxed views) */ } }
   exportJSON() { return JSON.stringify(this.s, null, 1); }
   importJSON(text) { const d = JSON.parse(text); if (!d || d.v !== 1 || !Array.isArray(d.agents)) throw new Error('Ismeretlen mentésformátum'); this.s = d; this.save(); }
@@ -111,20 +118,20 @@ export class Game {
   // ---------- agents ----------
   startDisciples() {
     this.s.phase = 'disciples';
-    this.s.agents = STARTERS.map((a) => ({ id: uid(), ...a, level: 1, xp: 0, status: 'ébredezik', known: [], created: Date.now(), bornAt: Date.now() - 30000 }));
+    this.s.agents = STARTERS.map((a) => ({ id: uid(), ...a, level: 1, xp: 0, skills: { speed: 0, depth: 0, accuracy: 0 }, points: 0, status: 'ébredezik', known: [], created: Date.now(), bornAt: Date.now() - 30000 }));
     this.say(this.s.agents[0].id, `Üdvözlünk, ${this.s.oracle.name}! Négyen vagyunk, még kezdetleges tudással. Minden kérdéseddel és utasításoddal okosabbak leszünk, és egyre jobban megismerünk.`);
     this.save();
     if (this.s.oracle.bigq) this.enqueue({ type: 'research', query: this.s.oracle.bigq, from: 'oracle', note: 'a nagy kérdésed' });
   }
   gainXP(ag, n, why) {
-    const before = ag.level; ag.xp += Math.round(n); ag.level = levelOf(ag.xp);
-    if (ag.level > before) { this.log(ag, `szintet lépett: LVL ${ag.level}`, 'lvl'); this.ui.toast(`${ag.name} szintet lépett → LVL ${ag.level}`, ag.color); }
+    const before = ag.level; ag.xp += Math.round(n * (1 + 0.1 * (ag.skills?.accuracy || 0))); ag.level = levelOf(ag.xp);
+    if (ag.level > before) { ag.points = (ag.points || 0) + (ag.level - before); this.log(ag, `szintet lépett: LVL ${ag.level}`, 'lvl'); this.ui.toast(`${ag.name} szintet lépett → LVL ${ag.level}`, ag.color); }
     this.ui.updateAgent(ag);
   }
   createAgent({ name, specialty, form, color }) {
     if (this.s.agents.length >= this.agentSlots()) throw new Error('Nincs szabad hely: a Központi Tudat szintje határozza meg, hány ügynököt tud vezetni.');
     const cat = CAT[specialty] ? specialty : classify(specialty);
-    const ag = { id: uid(), name: (name || '').trim() || (CAT[cat]?.name + '-tudós'), role: 'custom', specialty, cat, form: FORMS.some((f) => f.id === form) ? form : 'crystal', color, desc: `Specialista: ${CAT[specialty]?.name || specialty}`, level: 1, xp: 0, status: 'születik', known: [], created: Date.now(), bornAt: Date.now() };
+    const ag = { id: uid(), name: (name || '').trim() || (CAT[cat]?.name + '-tudós'), role: 'custom', specialty, cat, skills: { speed: 0, depth: 0, accuracy: 0 }, points: 1, form: FORMS.some((f) => f.id === form) ? form : 'crystal', color, desc: `Specialista: ${CAT[specialty]?.name || specialty}`, level: 1, xp: 0, status: 'születik', known: [], created: Date.now(), bornAt: Date.now() };
     this.s.agents.push(ag); this.save();
     this.say(ag.id, `Megszülettem. A területem: ${CAT[specialty]?.name || specialty}. Mindent, amit megtanulok, a Központi Tudatnak adok.`);
     this.ui.addAgent(ag);
@@ -176,14 +183,15 @@ export class Game {
     this.maybeAskFollowup();
     setTimeout(() => this.pump(), 400);
   }
-  wait(ms, ag) { const speed = ag ? 1 + ag.level * 0.08 : 1; return new Promise((r) => setTimeout(r, ms / speed / SPEED)); }
+  spendPoint(id, skill) { const a = this.agent(id); if (!a || !(a.points > 0) || (a.skills[skill] ?? 99) >= 10) return false; a.skills[skill]++; a.points--; this.save(); return true; }
+  wait(ms, ag) { const speed = ag ? 1 + ag.level * 0.08 + (ag.skills?.speed || 0) * 0.15 : 1; return new Promise((r) => setTimeout(r, ms / speed / SPEED)); }
   setStatus(ag, st) { if (!ag) return; ag.status = st; this.ui.updateAgent(ag); }
 
   // The research pipeline: Kutató finds, Elemző verifies, Nyelvész extracts terms, Építész links, specialists add depth, then sync.
   async runResearch(task) {
     const A = { k: this.byRole('kutato'), e: this.byRole('elemzo'), n: this.byRole('nyelvesz'), b: this.byRole('epitesz') };
     const lead = task.agentId ? this.agent(task.agentId) : A.k;
-    const count = Math.min(4, 1 + Math.floor((lead?.level || 1) / 3));
+    const count = Math.min(5, 1 + Math.floor((lead?.level || 1) / 3) + Math.floor((lead?.skills?.depth || 0) / 2));
     this.setStatus(lead, 'keres'); this.log(lead, `kutatás indul: „${task.query}”${task.from === 'self' ? ' (saját kíváncsiság)' : ''}`);
     let res;
     if (this.sources.wiki && !this.sources.api) {
@@ -201,7 +209,7 @@ export class Game {
       const r = await this.llm.research(task.question || task.query, { profile: this.profileSummary(), count: count + 1 });
       res = { ...r, via: this.sourceName };
       for (const it of res.items) {
-        it.verified = it.confidence >= 0.75; it.cat = it.cat || classify(`${it.title} ${it.extract}`);
+        it.verified = it.confidence >= 0.75 - 0.03 * (A.e?.skills?.accuracy || 0); it.cat = it.cat || classify(`${it.title} ${it.extract}`);
         if (A.e) { this.setStatus(A.e, 'ellenőriz'); this.log(A.e, `${it.verified ? 'magas' : 'közepes'} megbízhatóság: ${it.title}`); await this.wait(500, A.e); }
         if (A.n) { this.setStatus(A.n, 'értelmez'); if (!it.tags?.length) it.tags = keywords(it.extract); this.log(A.n, `kulcsfogalmak: ${it.tags.slice(0, 4).join(', ')}`); await this.wait(400, A.n); }
       }
@@ -273,7 +281,7 @@ export class Game {
     const c = this.s.core; c.born = true; c.bornAt = Date.now(); this.s.phase = 'core';
     c.xp = this.nodes.length * 6; c.lastLevel = 1; this.nodes.forEach((n) => (n.synced = true));
     this.log(null, 'A Központi Tudat megszületett.', 'lvl');
-    this.ui.birthCinematic();
+    this.ui.birthCinematic(); this.ui.world.focusCore();
     this.s.agents.forEach((a, i) => setTimeout(() => this.ui.world.pulse(a.id, 'core', a.color, 22), i * 350));
     this.save();
     const o = this.s.oracle; let portrait = `${o.archetype?.name || 'A Vándor'} vagy, ${o.name}. ${o.archetype?.desc || ''}`;

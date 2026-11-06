@@ -94,6 +94,18 @@ export class World {
     this.orbits = [0, 1, 2].map((i) => { const o = add(new THREE.Group(), this.core); o.rotation.set(0.5 + i * 0.7, i * 1.1, 0.3 * i); add(circle(3.3 + i * 0.45, [0xffb35c, 0x5fe3ff, 0xff8ad8][i], 0.55, 160), o); const m = add(new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 8), new THREE.MeshBasicMaterial({ color: [0xffe2b8, 0xbff8ff, 0xffd0ee][i] })), o); o.userData = { m, r: 3.3 + i * 0.45, sp: 0.8 + i * 0.4 }; return o; });
     const cp = []; for (let i = 0; i < 1600; i++) { const y = 1 - 2 * (i + 0.5) / 1600, r = Math.sqrt(1 - y * y), a = i * 2.39996, R = 4.3 + Math.random() * 1.2; cp.push(Math.cos(a) * r * R, y * R, Math.sin(a) * r * R); }
     this.corona = add(pts(cp, 0xffd9a8, 0.05, 0.45), this.core);
+    // Evolution layers, unlocked by core level (see setCore): galaxy arms, quasar jets, nebula veil, crown.
+    const ap = [], ac = [], c1 = new THREE.Color(0xffd9a8), c2 = new THREE.Color(0x7f9bff);
+    for (let i = 0; i < 3600; i++) { const arm = i % 3, d = Math.random(), r = 3.2 + d * 2.6, a = arm * 2.094 + d * 3.4 + (Math.random() - 0.5) * 0.45; ap.push(Math.cos(a) * r, (Math.random() - 0.5) * 0.25 * (1 - d), Math.sin(a) * r); const c = c1.clone().lerp(c2, d); ac.push(c.r, c.g, c.b); }
+    const ag = new THREE.BufferGeometry(); ag.setAttribute('position', new THREE.BufferAttribute(new Float32Array(ap), 3)); ag.setAttribute('color', new THREE.BufferAttribute(new Float32Array(ac), 3));
+    this.arms = add(new THREE.Points(ag, new THREE.PointsMaterial({ size: 0.06, vertexColors: true, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false })), this.core); this.arms.rotation.x = 0.25;
+    this.jets = add(new THREE.Group(), this.core);
+    [1, -1].forEach((d) => { const j = add(new THREE.Mesh(new THREE.ConeGeometry(0.55, 7, 24, 1, true), new THREE.MeshBasicMaterial({ color: 0x9fd8ff, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })), this.jets); j.position.y = d * 4.2; j.rotation.x = d > 0 ? Math.PI : 0; add(wire(new THREE.ConeGeometry(0.55, 7, 12, 4, true), 0xbfe8ff, 0.2), j); });
+    const gc = document.createElement('canvas'); gc.width = gc.height = 256; const gx = gc.getContext('2d'), gr = gx.createRadialGradient(128, 128, 0, 128, 128, 128);
+    gr.addColorStop(0, 'rgba(255,190,140,.10)'); gr.addColorStop(0.3, 'rgba(200,120,255,.07)'); gr.addColorStop(0.65, 'rgba(90,130,255,.04)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); gx.fillStyle = gr; gx.fillRect(0, 0, 256, 256);
+    this.nebula = add(new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(gc), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })), this.core); this.nebula.scale.setScalar(19);
+    this.crown = add(wire(new THREE.IcosahedronGeometry(6.2, 3), 0xffe6c4, 0.07), this.core);
+    this.shock = add(circle(1, 0xffd9a8, 0, 128), s); this.shock.position.y = CORE_Y; this.shockT = -1;
     this.beam = add(new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.22, 30, 24, 1, true), new THREE.MeshBasicMaterial({ color: GOLD, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false })), s);
     this.beam.position.y = CORE_Y + 15;
     this.coreLabel = this.makeLabel('core', '#ffb35c'); this.coreLabel.style.display = 'none';
@@ -112,7 +124,14 @@ export class World {
     this.orbits.forEach((o, i) => (o.visible = level >= [8, 14, 22][i])); this.corona.visible = level >= 18; this.layout();
     this.beamTarget = level >= 5 ? Math.min(0.55, 0.15 + level * 0.02) : 0;
     this.plat.scale.setScalar(Math.min(1.4, 0.6 + level * 0.04));
+    this.arms.visible = level >= 15; this.jets.visible = level >= 22; this.nebula.visible = level >= 30; this.crown.visible = level >= 45;
+    // star temperature: warm gold when young, white-blue as it matures
+    const k = Math.min(1, (level - 1) / 40); this.ico.material.color.set(0xffb35c).lerp(new THREE.Color(0xdfe9ff), k); this.heart.material.color.set(0xffe6c4).lerp(new THREE.Color(0xffffff), k);
+    if (this.lastCoreLevel && level > this.lastCoreLevel) this.shockT = 0;
+    this.lastCoreLevel = level;
   }
+  // Birth cinematic: swoop in on the newborn core, then drift back out.
+  focusCore() { this.zoomBack = this.cam.position.length(); this.cam.position.setLength(24); this.zoomHold = 4; this.shockT = 0; }
 
   // ---------- agents ----------
   makeLabel(id, color) {
@@ -214,10 +233,13 @@ export class World {
     if (cs.born) {
       const cur = this.core.scale.x, tgt = this.coreScaleTarget || 0.5; this.core.scale.setScalar(cur + (tgt - cur) * 0.02);
       this.core.rotation.y = t * 0.25; this.ico.rotation.x = t * 0.15; this.ico2.rotation.y = -t * 0.5; this.shell.rotation.y = -t * 0.08;
-      this.heart.scale.setScalar(1 + 0.12 * Math.sin(t * 3)); this.rings[0].rotation.y = t * 0.3; this.ticks.rotation.y = -t * 0.15;
+      this.heart.scale.setScalar((1 + 0.12 * Math.sin(t * 3)) / Math.max(1, this.core.scale.x * 0.7)); this.rings[0].rotation.y = t * 0.3; this.ticks.rotation.y = -t * 0.15;
       this.orbits.forEach((o) => { const u = o.userData; u.m.position.set(Math.cos(t * u.sp) * u.r, 0, Math.sin(t * u.sp) * u.r); }); this.corona.rotation.y = t * 0.05;
       this.rings[2].position.y = 0.9 + 0.15 * Math.sin(t * 2); this.plat.position.y = 0.15 * Math.sin(t * 0.8);
     }
+    if (cs.born) { this.arms.rotation.y = t * 0.12; this.jets.rotation.y = t * 0.6; this.crown.rotation.y = -t * 0.04; this.nebula.material.opacity = 0.6 + 0.25 * Math.sin(t * 0.7); }
+    if (this.shockT >= 0) { this.shockT += dt; const k = this.shockT / 2.2; this.shock.scale.setScalar(1 + k * 22); this.shock.material.opacity = 0.9 * (1 - k); if (k >= 1) { this.shockT = -1; this.shock.material.opacity = 0; } }
+    if (this.zoomBack) { if (this.zoomHold > 0) this.zoomHold -= dt; else { const L = this.cam.position.length(); this.cam.position.setLength(L + (this.zoomBack - L) * 0.015); if (Math.abs(L - this.zoomBack) < 0.3) this.zoomBack = 0; } }
     const bt = cs.born ? (this.beamTarget || 0) : 0; this.beam.material.opacity += (bt * (0.8 + 0.2 * Math.sin(t * 2)) - this.beam.material.opacity) * 0.05;
     // pulses
     const tmp = new THREE.Vector3();

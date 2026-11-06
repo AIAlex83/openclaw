@@ -53,6 +53,10 @@ await page.waitForTimeout(1500); await shot('07-birth');
 await page.waitForTimeout(5000); await shot('08-core-born');
 await page.click('#b-profile'); await page.waitForTimeout(500); await shot('09-profile'); await page.click('.x');
 await page.click('#b-know'); await page.waitForTimeout(500); await shot('10-knowledge'); await page.click('.x');
+await page.click('#b-map'); await page.waitForTimeout(800); await page.mouse.click(...(await (async () => { const b = await page.$('#kmap'); const r = await b.boundingBox(); return [r.x + r.width * 0.5, r.y + r.height * 0.5]; })())); await page.waitForTimeout(300); await shot('10b-map'); await page.click('.x');
+await page.click('.arow'); await page.waitForTimeout(400); const sk = await page.$('#skills [data-sk="depth"]:not([disabled])'); if (sk) { await sk.click(); await page.waitForTimeout(300); } await shot('10c-agent-skills'); await page.click('.x');
+// core evolution series (levels set directly to preview the stages)
+if (mode === 'desktop') for (const L of [1, 6, 15, 22, 30, 45]) { await page.evaluate((L) => { __aeon.game.s.core.xp = 2 * 30 * Math.pow(L - 1, 1.5) + 1; __aeon.ui.updateCore(); }, L); await page.waitForTimeout(L === 1 ? 2500 : 4000); await page.screenshot({ path: `shots/core-L${String(L).padStart(2, '0')}.png`, clip: { x: 400, y: 0, width: 800, height: 600 } }); }
 // grow the core to show the later stages (simulates a long play session)
 await page.evaluate(() => { __aeon.game.s.core.xp = 2200; __aeon.ui.updateCore(); __aeon.ui.renderAgents(); });
 await page.click('#b-forge'); await page.waitForTimeout(400); await page.fill('#f-name', 'Szófia'); await page.selectOption('#f-spec', 'pszicho'); await page.click('.fopt[data-f="pulsar"]'); await page.click('.swc[data-c="#ff8ad8"]'); await shot('11-forge'); await page.click('#f-go');

@@ -34,6 +34,7 @@ export class UI {
     $('#cmd').addEventListener('submit', (e) => { e.preventDefault(); const i = $('#cmd-in'); const v = i.value; i.value = ''; this.game.command(v); });
     $('#b-profile').onclick = () => this.openProfile();
     $('#b-know').onclick = () => this.openKnowledge();
+    $('#b-map').onclick = () => this.openMap();
     $('#b-forge').onclick = () => this.openForge();
     $('#b-settings').onclick = () => this.openSettings();
     $('#modal').addEventListener('click', (e) => { if (e.target.id === 'modal' || e.target.closest('.x')) this.closeModal(); });
@@ -50,7 +51,7 @@ export class UI {
     const g = this.game;
     $('#agents').innerHTML = `<div class="t">ÜGYNÖKHÁLÓZAT <span class="dim">${g.s.agents.length} / ${g.agentSlots()}</span></div>` + g.s.agents.map((a) => {
       const lo = xpFor(a.level), hi = xpFor(a.level + 1), pct = Math.min(100, (a.xp - lo) / (hi - lo) * 100);
-      return `<div class="arow" data-id="${a.id}"><span class="dot" style="color:${a.color}"></span><span class="an" style="color:${a.color}">${esc(a.name)}</span><span class="al">LVL ${a.level}</span><span class="as">${esc(a.status || '')}</span><div class="bar sm"><i style="width:${pct}%;background:${a.color}"></i></div></div>`;
+      return `<div class="arow" data-id="${a.id}"><span class="dot" style="color:${a.color}"></span><span class="an" style="color:${a.color}">${esc(a.name)}</span><span class="al">LVL ${a.level}${a.points > 0 ? ` <span class="pt" title="elosztható képességpont">+${a.points}</span>` : ''}</span><span class="as">${esc(a.status || '')}</span><div class="bar sm"><i style="width:${pct}%;background:${a.color}"></i></div></div>`;
     }).join('');
     $('#agents').querySelectorAll('.arow').forEach((r) => r.addEventListener('click', () => this.openAgent(r.dataset.id)));
   }
@@ -119,7 +120,38 @@ export class UI {
     this.modal(a.name, `<div class="agent-head" style="--c:${a.color}"><div class="big" style="color:${a.color}">${esc(a.name)} <span class="al">LVL ${a.level}</span></div><div class="sub">${esc(a.desc || '')}</div>
       <div class="row"><span>Forma</span><b>${esc(FORMS.find((f) => f.id === a.form)?.name || a.form)}</b></div><div class="row"><span>Tapasztalat</span><b>${fmt(a.xp)} XP (következő szint: ${fmt(xpFor(a.level + 1))})</b></div>
       <div class="row"><span>Sebesség</span><b>+${Math.round(a.level * 8)} %</b></div><div class="row"><span>Saját tudáscsomópontok</span><b>${a.known.length}</b></div><div class="row"><span>Állapot</span><b>${esc(a.status)}</b></div></div>
+      <div class="t" style="margin-top:14px">KÉPESSÉGEK <span class="dim">· elosztható pont: <b id="pts">${a.points || 0}</b></span></div>
+      <div id="skills">${[['speed', 'Sebesség', 'gyorsabban dolgozik'], ['depth', 'Mélység', 'több forrást dolgoz fel egyszerre'], ['accuracy', 'Pontosság', 'több XP, szigorúbb ellenőrzés']].map(([k, n, d]) => `<div class="skill"><span><b>${n}</b> <span class="dim">${d}</span></span><span class="pips">${Array.from({ length: 10 }, (_, i) => `<i class="${i < (a.skills?.[k] || 0) ? 'on' : ''}" style="--c:${a.color}"></i>`).join('')}</span><button class="btn sm" data-sk="${k}" ${a.points > 0 ? '' : 'disabled'}>+</button></div>`).join('')}</div>
       <div class="t" style="margin-top:14px">LEGUTÓBBI TUDÁS</div>${nodes.length ? nodes.map((n) => this.nodeRow(n)).join('') : '<div class="dim">Még nincs saját tudása.</div>'}`);
+    this.bindSkills(id);
+  }
+  bindSkills(id) { document.querySelectorAll('#skills [data-sk]').forEach((b) => b.addEventListener('click', () => { if (this.game.spendPoint(id, b.dataset.sk)) { this.openAgent(id); this.toast('Képesség fejlesztve', this.game.agent(id).color); } })); }
+  // Star map of everything learned: categories pull nodes together, shared tags/related topics draw links.
+  openMap() {
+    const g = this.game, nodes = g.nodes.slice(-400);
+    const box = this.modal(`Tudástérkép · ${g.nodes.length} csomópont`, `<canvas id="kmap" width="900" height="560"></canvas><div id="kinfo" class="sub">Kattints egy csillagra a részletekért. A színek a tudásterületeket jelölik, a vonalak a közös fogalmakat.</div>`);
+    const cv = box.querySelector('#kmap'), x = cv.getContext('2d'), W = cv.width, H = cv.height;
+    const cats = [...new Set(nodes.map((n) => n.cat))], anchor = Object.fromEntries(cats.map((c, i) => { const a = i / cats.length * Math.PI * 2; return [c, [W / 2 + Math.cos(a) * W * 0.3, H / 2 + Math.sin(a) * H * 0.3]]; }));
+    const P = nodes.map((n) => ({ n, x: anchor[n.cat][0] + (Math.random() - 0.5) * 80, y: anchor[n.cat][1] + (Math.random() - 0.5) * 80, vx: 0, vy: 0 }));
+    const E = []; for (let i = 0; i < P.length; i++) for (let j = i + 1; j < P.length; j++) { const a = P[i].n, b = P[j].n; const shared = (a.tags || []).filter((t) => (b.tags || []).includes(t)).length + (a.query && a.query === b.query ? 2 : 0); if (shared >= 2) E.push([i, j]); }
+    for (let it = 0; it < 220; it++) {
+      for (const p of P) { const [ax, ay] = anchor[p.n.cat]; p.vx += (ax - p.x) * 0.004; p.vy += (ay - p.y) * 0.004; }
+      for (let i = 0; i < P.length; i++) for (let j = i + 1; j < P.length; j++) { const a = P[i], b = P[j], dx = a.x - b.x, dy = a.y - b.y, d2 = dx * dx + dy * dy + 0.01; if (d2 < 3600) { const f = 40 / d2; a.vx += dx * f; a.vy += dy * f; b.vx -= dx * f; b.vy -= dy * f; } }
+      for (const [i, j] of E) { const a = P[i], b = P[j]; a.vx += (b.x - a.x) * 0.002; a.vy += (b.y - a.y) * 0.002; b.vx += (a.x - b.x) * 0.002; b.vy += (a.y - b.y) * 0.002; }
+      for (const p of P) { p.x = Math.max(14, Math.min(W - 14, p.x + p.vx)); p.y = Math.max(14, Math.min(H - 14, p.y + p.vy)); p.vx *= 0.82; p.vy *= 0.82; }
+    }
+    let sel = null;
+    const draw = () => {
+      x.fillStyle = '#020713'; x.fillRect(0, 0, W, H);
+      for (let i = 0; i < 160; i++) { x.fillStyle = `rgba(255,255,255,${(i * 37 % 10) / 40})`; x.fillRect((i * 97) % W, (i * 53) % H, 1, 1); }
+      x.lineWidth = 1; for (const [i, j] of E) { x.strokeStyle = sel && (P[i] === sel || P[j] === sel) ? 'rgba(255,200,140,.8)' : 'rgba(120,200,255,.13)'; x.beginPath(); x.moveTo(P[i].x, P[i].y); x.lineTo(P[j].x, P[j].y); x.stroke(); }
+      x.font = '700 12px Orbitron, sans-serif'; x.textAlign = 'center';
+      for (const c of cats) { const [ax, ay] = anchor[c]; x.fillStyle = CAT[c].color; x.globalAlpha = 0.5; x.fillText(CAT[c].name.toUpperCase(), ax, ay - 46); x.globalAlpha = 1; }
+      for (const p of P) { const c = CAT[p.n.cat]?.color || '#9ab', r = p === sel ? 7 : p.n.verified ? 4.5 : 3.2; x.shadowColor = c; x.shadowBlur = 12; x.fillStyle = c; x.beginPath(); x.arc(p.x, p.y, r, 0, 7); x.fill(); x.shadowBlur = 0; }
+      if (sel) { x.fillStyle = '#fff'; x.font = '600 15px Rajdhani, sans-serif'; x.fillText(sel.n.title, sel.x, sel.y - 12); }
+    };
+    cv.addEventListener('click', (e) => { const r = cv.getBoundingClientRect(), mx = (e.clientX - r.left) * W / r.width, my = (e.clientY - r.top) * H / r.height; sel = P.reduce((b, p) => (Math.hypot(p.x - mx, p.y - my) < Math.hypot((b?.x ?? 1e9) - mx, (b?.y ?? 1e9) - my) ? p : b), null); if (sel && Math.hypot(sel.x - mx, sel.y - my) > 24) sel = null; box.querySelector('#kinfo').innerHTML = sel ? this.nodeRow(sel.n) : 'Kattints egy csillagra a részletekért.'; draw(); });
+    draw();
   }
   nodeRow(n) {
     const c = CAT[n.cat] || CAT.altalanos, owner = this.game.agent(n.by);
